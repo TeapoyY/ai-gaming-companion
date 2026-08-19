@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎮 AI Coach — Live Game Coaching Companion</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "Helvetica Neue", sans-serif;
+    background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    color: #e8e8f0;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  header {
+    padding: 18px 24px;
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 800;
+    background: linear-gradient(90deg, #00d2ff, #7b2ff7);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    background: rgba(0,210,255,0.15);
+    border: 1px solid rgba(0,210,255,0.4);
+    border-radius: 12px;
+    font-size: 11px;
+    color: #00d2ff;
+    font-weight: 600;
+    margin-left: 8px;
+  }
+  .controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .personality-toggle {
+    display: flex;
+    background: rgba(0,0,0,0.3);
+    border-radius: 20px;
+    padding: 3px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .personality-toggle button {
+    padding: 6px 14px;
+    border: none;
+    background: transparent;
+    color: #aaa;
+    cursor: pointer;
+    border-radius: 16px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .personality-toggle button.active {
+    background: linear-gradient(90deg, #00d2ff, #7b2ff7);
+    color: white;
+  }
+  .toggle-btn {
+    padding: 8px 16px;
+    background: rgba(255,255,255,0.08);
+    color: #e8e8f0;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .toggle-btn:hover { background: rgba(255,255,255,0.15); }
+  .toggle-btn.live { background: #ff4757; border-color: #ff4757; animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(255,71,87,0.6); }
+    50% { box-shadow: 0 0 0 10px rgba(255,71,87,0); }
+  }
+  main {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 16px;
+    padding: 16px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+  }
+  .game-panel {
+    background: rgba(0,0,0,0.5);
+    border-radius: 14px;
+    padding: 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .game-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .game-tabs button {
+    padding: 7px 14px;
+    background: rgba(255,255,255,0.05);
+    color: #aaa;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 18px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .game-tabs button.active {
+    background: linear-gradient(90deg, #7b2ff7, #f107a3);
+    color: white;
+    border-color: transparent;
+  }
+  .game-stage {
+    position: relative;
+    aspect-ratio: 16/10;
+    background: #0a0a14;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  .hud {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(0,0,0,0.6);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    gap: 16px;
+  }
+  .hud .label { color: #888; font-weight: 500; }
+  .hud .val { color: #00d2ff; }
+  .recording-dot {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ff4757;
+    box-shadow: 0 0 12px #ff4757;
+    animation: pulse 1.5s infinite;
+  }
+  .companion-panel {
+    background: rgba(0,0,0,0.5);
+    border-radius: 14px;
+    padding: 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: calc(100vh - 140px);
+  }
+  .avatar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .avatar-img {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    background: linear-gradient(135deg, #00d2ff, #7b2ff7);
+  }
+  .avatar.coach .avatar-img { background: linear-gradient(135deg, #00d2ff, #7b2ff7); }
+  .avatar.hype .avatar-img { background: linear-gradient(135deg, #f107a3, #ff4757); }
+  .avatar-info h3 {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  .avatar-info p {
+    font-size: 11px;
+    color: #888;
+  }
+  .chat-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 240px;
+    max-height: 360px;
+    scroll-behavior: smooth;
+  }
+  .chat-msg {
+    padding: 9px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.4;
+    animation: fadeIn 0.3s ease-out;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .chat-msg.ai {
+    background: linear-gradient(135deg, rgba(0,210,255,0.18), rgba(123,47,247,0.18));
+    border: 1px solid rgba(0,210,255,0.3);
+    align-self: flex-start;
+    max-width: 90%;
+  }
+  .chat-msg.ai.tip {
+    border-color: #ffd700;
+    background: linear-gradient(135deg, rgba(255,215,0,0.18), rgba(255,165,0,0.18));
+  }
+  .chat-msg.ai.crit {
+    border-color: #ff4757;
+    background: linear-gradient(135deg, rgba(255,71,87,0.18), rgba(241,7,163,0.18));
+  }
+  .chat-msg.system {
+    background: rgba(255,255,255,0.04);
+    color: #888;
+    font-size: 11px;
+    align-self: center;
+    text-align: center;
+    padding: 4px 10px;
+  }
+  .chat-msg .who {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+    opacity: 0.7;
+  }
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .stat {
+    padding: 10px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+    text-align: center;
+  }
+  .stat .num {
+    font-size: 20px;
+    font-weight: 800;
+    background: linear-gradient(90deg, #00d2ff, #7b2ff7);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .stat .label {
+    font-size: 10px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+  .voice-toggle {
+    display: flex;
+    gap: 8px;
+  }
+  .voice-toggle button {
+    flex: 1;
+    padding: 8px;
+    background: rgba(255,255,255,0.06);
+    color: #aaa;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .voice-toggle button.active {
+    background: linear-gradient(90deg, #00d2ff, #7b2ff7);
+    color: white;
+    border-color: transparent;
+  }
+  footer {
+    text-align: center;
+    padding: 18px;
+    color: #666;
+    font-size: 11px;
+  }
+  footer a { color: #00d2ff; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎮 AI Coach <span class="badge">Web G1</span></h1>
+  <div class="controls">
+    <div class="personality-toggle" id="personalityToggle">
+      <button data-p="coach" class="active">🧠 Coach</button>
+      <button data-p="hype">🔥 Hype</button>
+    </div>
+    <button class="toggle-btn" id="gameBtn">▶ Start</button>
+    <button class="toggle-btn" id="voiceBtn">🔊 Voice Off</button>
+  </div>
+</header>
+
+<main>
+  <div class="game-panel">
+    <div class="game-tabs" id="gameTabs">
+      <button data-game="runner" class="active">🏃 Runner</button>
+      <button data-game="shooter">🎯 Shooter</button>
+      <button data-game="snake">🐍 Snake</button>
+    </div>
+    <div class="game-stage" id="gameStage">
+      <canvas id="gameCanvas" width="800" height="500"></canvas>
+      <div class="hud">
+        <span><span class="label">Score</span> <span class="val" id="scoreVal">0</span></span>
+        <span><span class="label">Time</span> <span class="val" id="timeVal">0s</span></span>
+        <span><span class="label">Best</span> <span class="val" id="bestVal">0</span></span>
+      </div>
+      <div class="recording-dot" id="recDot" style="display:none;"></div>
+    </div>
+  </div>
+
+  <div class="companion-panel">
+    <div class="avatar coach" id="avatarCard">
+      <div class="avatar-img" id="avatarImg">🧠</div>
+      <div class="avatar-info">
+        <h3 id="avatarName">Coach Kai</h3>
+        <p id="avatarTagline">Analytical · Calm · Strategic</p>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat">
+        <div class="num" id="tipsCount">0</div>
+        <div class="label">Tips</div>
+      </div>
+      <div class="stat">
+        <div class="num" id="hypeCount">0</div>
+        <div class="label">Hypes</div>
+      </div>
+      <div class="stat">
+        <div class="num" id="sessionTime">0:00</div>
+        <div class="label">Session</div>
+      </div>
+    </div>
+
+    <div class="chat-log" id="chatLog">
+      <div class="chat-msg system">Welcome! Pick a game + click Start. Your AI companion reacts in real time.</div>
+    </div>
+
+    <div class="voice-toggle">
+      <button data-voice="off" class="active">🔇 Silent</button>
+      <button data-voice="ai">🗣 AI Coach</button>
+      <button data-voice="all">🎤 Everything</button>
+    </div>
+  </div>
+</main>
+
+<footer>
+  AI Coach Web G1 — Mock companion · 1-day MVP validation · Acquire.com listing k1zv4n2okc ($8.2K TTM, 8000% growth)
+</footer>
+
+<script>
+// ============================================================
+// PERSONALITIES — Two distinct coaching voices (per Acquire spec)
+// ============================================================
+const PERSONALITIES = {
+  coach: {
+    name: 'Coach Kai',
+    tagline: 'Analytical · Calm · Strategic',
+    avatar: '🧠',
+    color: 'linear-gradient(135deg, #00d2ff, #7b2ff7)',
+    phrases: {
+      start: "Alright, focus. I'll watch your every move and call out patterns. Let's get tactical.",
+      lowScore: "Tighten up. Your decision-making is sloppy — slow down and read the situation.",
+      midScore: "Decent run. Now optimize: what's the highest-value action each second?",
+      highScore: "Sharp play. You're reading the board correctly now.",
+      gameOver: "Good session. Note what worked — replicate the pattern.",
+      milestone: "Nice milestone. Now push for consistency, not just a single peak.",
+      tip: (ctx) => coachingTips(ctx),
+    },
+  },
+  hype: {
+    name: 'Hype Zara',
+    tagline: 'Energetic · Loud · Hyping',
+    avatar: '🔥',
+    color: 'linear-gradient(135deg, #f107a3, #ff4757)',
+    phrases: {
+      start: "LET'S GOOOO! I'm your hype beast — every move you make, I'm gonna SCREAM about it!",
+      lowScore: "Don't stop! You're just warming up! One more push!",
+      midScore: "YEAH that's the energy! Keep that momentum going!",
+      highScore: "YOU'RE ON FIRE! This is ELITE gameplay!",
+      gameOver: "WOOOO! That was INSANE! We're coming back for that record!",
+      milestone: "MILESTONE!! Tell your friends! Screenshot this NOW!",
+      tip: (ctx) => hypeTips(ctx),
+    }
+  }
+};
+
+// Coaching tips — pattern recognition + strategy
+const coachingTips = [
+  "Your reaction time is slowing. Try predicting the next obstacle instead of reacting.",
+  "Risk-reward: that big cluster isn't worth chasing if it costs you combo.",
+  "Pattern: you dodge better on left than right. Lean into your strengths.",
+  "Spacing matters more than speed right now. Leave yourself reaction room.",
+  "When in doubt, slow down. Panic plays lose more than they win.",
+  "Notice the rhythm? Find it and ride it.",
+  "Overcommitting on one direction opens the other. Stay balanced.",
+];
+
+// Hype tips — pure energy + motivation
+const hypeTips = [
+  "LET'S GOOO KEEP THAT ENERGY UP!!",
+  "YEAH YOU'RE CRUSHING IT!!!",
+  "BEST RUN EVER DON'T CHOKE NOW!!",
+  "I KNEW YOU HAD IT IN YOU!",
+  "SHOW THEM WHAT YOU'RE MADE OF!",
+  "OH MY GOD THIS IS FILTHY!",
+  "YOU'RE LITERALLY UNSTOPPABLE!",
+];
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let personality = 'coach';
+let voiceMode = 'off'; // off | ai | all
+let isPlaying = false;
+let score = 0;
+let bestScore = +(localStorage.getItem('aicoach_best') || 0);
+let startTime = 0;
+let tipsCount = 0;
+let hypeCount = 0;
+let lastTipTime = 0;
+let lastMilestone = 0;
+let sessionStart = Date.now();
+let currentGame = 'runner';
+let gameLoopId = null;
+let gameState = null;
+
+document.getElementById('bestVal').textContent = bestScore;
+
+// ============================================================
+// CANVAS RENDERING — Three demo games
+// ============================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  canvas.width = r.width * window.devicePixelRatio;
+  canvas.height = r.width * (10/16) * window.devicePixelRatio;
+  canvas.style.width = r.width + 'px';
+  canvas.style.height = (r.width * 10/16) + 'px';
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+}
+window.addEventListener('resize', resizeCanvas);
+setTimeout(resizeCanvas, 50);
+
+// ============================================================
+// GAME: RUNNER
+// ============================================================
+function initRunner() {
+  return {
+    type: 'runner',
+    player: { x: 80, y: 250, vy: 0, size: 24, onGround: true },
+    obstacles: [],
+    particles: [],
+    ground: 320,
+    gravity: 0.7,
+    jumpForce: -13,
+    speed: 6,
+    spawnTimer: 0,
+    color: ['#ff6b6b', '#4ecdc4', '#ffe66d', '#a8e6cf'][Math.floor(Math.random()*4)],
+  };
+}
+
+function updateRunner(s) {
+  // Player physics
+  s.player.vy += s.gravity;
+  s.player.y += s.player.vy;
+  if (s.player.y + s.player.size >= s.ground) {
+    s.player.y = s.ground - s.player.size;
+    s.player.vy = 0;
+    s.player.onGround = true;
+  }
+
+  // Spawn obstacles
+  s.spawnTimer++;
+  if (s.spawnTimer > 50) {
+    s.spawnTimer = 0;
+    const h = 30 + Math.random() * 50;
+    s.obstacles.push({ x: canvas.width, y: s.ground - h, w: 20 + Math.random()*20, h });
+  }
+
+  // Move obstacles
+  for (let i = s.obstacles.length - 1; i >= 0; i--) {
+    s.obstacles[i].x -= s.speed;
+    if (s.obstacles[i].x + s.obstacles[i].w < 0) {
+      s.obstacles.splice(i, 1);
+      score++;
+    }
+  }
+
+  // Particles
+  for (let i = s.particles.length - 1; i >= 0; i--) {
+    s.particles[i].x += s.particles[i].vx;
+    s.particles[i].y += s.particles[i].vy;
+    s.particles[i].vy += 0.2;
+    s.particles[i].life--;
+    if (s.particles[i].life <= 0) s.particles.splice(i, 1);
+  }
+
+  // Collision
+  for (const ob of s.obstacles) {
+    if (s.player.x + s.player.size > ob.x &&
+        s.player.x < ob.x + ob.w &&
+        s.player.y + s.player.size > ob.y) {
+      gameOver();
+      return;
+    }
+  }
+}
+
+function drawRunner(s) {
+  ctx.fillStyle = '#0a0a14';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Ground
+  ctx.fillStyle = '#2a2a3e';
+  ctx.fillRect(0, s.ground, canvas.width, canvas.height - s.ground);
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += 40) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0); ctx.lineTo(x, s.ground);
+    ctx.stroke();
+  }
+  // Player (pulsing glow)
+  const glow = Math.sin(Date.now() / 200) * 5 + 15;
+  ctx.shadowColor = s.color;
+  ctx.shadowBlur = glow;
+  ctx.fillStyle = s.color;
+  ctx.fillRect(s.player.x, s.player.y, s.player.size, s.player.size);
+  ctx.shadowBlur = 0;
+  // Obstacles
+  for (const ob of s.obstacles) {
+    ctx.fillStyle = '#ff4757';
+    ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+  }
+  // Particles
+  for (const p of s.particles) {
+    ctx.fillStyle = `rgba(255,255,255,${p.life/40})`;
+    ctx.fillRect(p.x, p.y, 3, 3);
+  }
+}
+
+canvas.addEventListener('click', () => {
+  if (!isPlaying) return;
+  if (currentGame === 'runner' && gameState?.player?.onGround) {
+    gameState.player.vy = gameState.player.jumpForce;
+    gameState.player.onGround = false;
+    // Particles
+    for (let i = 0; i < 6; i++) {
+      gameState.particles.push({
+        x: gameState.player.x + 12,
+        y: gameState.player.y + gameState.player.size,
+        vx: (Math.random() - 0.5) * 4,
+        vy: Math.random() * -2,
+        life: 40,
+      });
+    }
+  } else if (currentGame === 'shooter') {
+    // Shoot
+    gameState.bullets.push({ x: 100, y: gameState.mouseY, vx: 12 });
+  }
+});
+
+// ============================================================
+// GAME: SHOOTER
+// ============================================================
+function initShooter() {
+  return {
+    type: 'shooter',
+    mouseY: 250,
+    targets: [],
+    bullets: [],
+    spawnTimer: 0,
+  };
+}
+
+function updateShooter(s) {
+  s.spawnTimer++;
+  if (s.spawnTimer > 30) {
+    s.spawnTimer = 0;
+    s.targets.push({ x: canvas.width, y: 50 + Math.random() * 400, r: 20 + Math.random() * 20, vy: (Math.random()-0.5)*2, alive: true });
+  }
+  for (let i = s.targets.length - 1; i >= 0; i--) {
+    s.targets[i].x -= 4;
+    s.targets[i].y += s.targets[i].vy;
+    if (s.targets[i].x < -50) s.targets.splice(i, 1);
+  }
+  for (let i = s.bullets.length - 1; i >= 0; i--) {
+    s.bullets[i].x += s.bullets[i].vx;
+    if (s.bullets[i].x > canvas.width) s.bullets.splice(i, 1);
+    // Hit detection
+    for (const t of s.targets) {
+      if (!t.alive) continue;
+      const dx = s.bullets[i].x - t.x, dy = s.bullets[i].y - t.y;
+      if (Math.sqrt(dx*dx+dy*dy) < t.r) {
+        t.alive = false;
+        s.bullets.splice(i, 1);
+        score += 5;
+        break;
+      }
+    }
+  }
+  s.targets = s.targets.filter(t => t.alive);
+}
+
+function drawShooter(s) {
+  ctx.fillStyle = '#0a0a14';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Crosshair
+  ctx.strokeStyle = '#00d2ff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(100, s.mouseY, 20, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(80, s.mouseY); ctx.lineTo(120, s.mouseY);
+  ctx.moveTo(100, s.mouseY - 20); ctx.lineTo(100, s.mouseY + 20);
+  ctx.stroke();
+  // Targets
+  for (const t of s.targets) {
+    ctx.fillStyle = '#ff4757';
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+  // Bullets
+  for (const b of s.bullets) {
+    ctx.fillStyle = '#ffe66d';
+    ctx.fillRect(b.x, b.y - 2, 14, 4);
+  }
+}
+
+canvas.addEventListener('mousemove', (e) => {
+  const r = canvas.getBoundingClientRect();
+  if (currentGame === 'shooter' && gameState) {
+    gameState.mouseY = (e.clientY - r.top) * (canvas.height / r.height) / window.devicePixelRatio;
+  }
+});
+
+// ============================================================
+// GAME: SNAKE
+// ============================================================
+function initSnake() {
+  return {
+    type: 'snake',
+    snake: [{x: 5, y: 5}],
+    dir: {x: 1, y: 0},
+    nextDir: {x: 1, y: 0},
+    food: {x: 15, y: 10},
+    cellSize: 20,
+    cols: 40,
+    rows: 25,
+    frame: 0,
+  };
+}
+
+function updateSnake(s) {
+  s.frame++;
+  if (s.frame < 6) return;
+  s.frame = 0;
+  s.dir = s.nextDir;
+  const head = { x: s.snake[0].x + s.dir.x, y: s.snake[0].y + s.dir.y };
+  if (head.x < 0 || head.x >= s.cols || head.y < 0 || head.y >= s.rows || s.snake.some(p => p.x === head.x && p.y === head.y)) {
+    gameOver();
+    return;
+  }
+  s.snake.unshift(head);
+  if (head.x === s.food.x && head.y === s.food.y) {
+    score++;
+    s.food = { x: Math.floor(Math.random()*s.cols), y: Math.floor(Math.random()*s.rows) };
+  } else {
+    s.snake.pop();
+  }
+}
+
+function drawSnake(s) {
+  ctx.fillStyle = '#0a0a14';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  for (let i = 0; i <= s.cols; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * s.cellSize, 0); ctx.lineTo(i * s.cellSize, s.rows * s.cellSize);
+    ctx.stroke();
+  }
+  for (let i = 0; i <= s.rows; i++) {
+    ctx.beginPath();
+    ctx.moveTo(0, i * s.cellSize); ctx.lineTo(s.cols * s.cellSize, i * s.cellSize);
+    ctx.stroke();
+  }
+  // Food
+  ctx.fillStyle = '#ff4757';
+  ctx.beginPath();
+  ctx.arc(s.food.x * s.cellSize + 10, s.food.y * s.cellSize + 10, 8, 0, Math.PI*2);
+  ctx.fill();
+  // Snake
+  s.snake.forEach((p, i) => {
+    const alpha = 1 - (i / s.snake.length) * 0.5;
+    ctx.fillStyle = `rgba(0,210,255,${alpha})`;
+    ctx.fillRect(p.x * s.cellSize + 1, p.y * s.cellSize + 1, s.cellSize - 2, s.cellSize - 2);
+  });
+}
+
+window.addEventListener('keydown', (e) => {
+  if (!isPlaying || currentGame !== 'snake' || !gameState) return;
+  const k = e.key;
+  if ((k === 'ArrowUp' || k === 'w') && gameState.dir.y === 0) gameState.nextDir = {x: 0, y: -1};
+  if ((k === 'ArrowDown' || k === 's') && gameState.dir.y === 0) gameState.nextDir = {x: 0, y: 1};
+  if ((k === 'ArrowLeft' || k === 'a') && gameState.dir.x === 0) gameState.nextDir = {x: -1, y: 0};
+  if ((k === 'ArrowRight' || k === 'd') && gameState.dir.x === 0) gameState.nextDir = {x: 1, y: 0};
+});
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+function gameLoop() {
+  if (!isPlaying) return;
+  if (currentGame === 'runner') updateRunner(gameState);
+  else if (currentGame === 'shooter') updateShooter(gameState);
+  else if (currentGame === 'snake') updateSnake(gameState);
+  if (!isPlaying) return;
+  if (currentGame === 'runner') drawRunner(gameState);
+  else if (currentGame === 'shooter') drawShooter(gameState);
+  else if (currentGame === 'snake') drawSnake(gameState);
+
+  document.getElementById('scoreVal').textContent = score;
+  document.getElementById('timeVal').textContent = Math.floor((Date.now() - startTime) / 1000) + 's';
+
+  maybeAIReact();
+  gameLoopId = requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// AI COMPANION — Real-time reactions
+// ============================================================
+function maybeAIReact() {
+  const now = Date.now();
+  const elapsed = (now - startTime) / 1000;
+
+  // Periodic tip every 4-7 seconds (varied)
+  if (now - lastTipTime > 4000 + Math.random() * 3000) {
+    lastTipTime = now;
+    const tip = PERSONALITIES[personality].phrases.tip({ score, elapsed, game: currentGame });
+    addChat(tip, personality === 'coach' ? 'tip' : '');
+    if (personality === 'coach') tipsCount++;
+    else hypeCount++;
+    document.getElementById('tipsCount').textContent = tipsCount;
+    document.getElementById('hypeCount').textContent = hypeCount;
+    speak(tip);
+  }
+
+  // Milestones
+  if (score > 0 && score % 10 === 0 && score !== lastMilestone) {
+    lastMilestone = score;
+    const msg = PERSONALITIES[personality].phrases.milestone;
+    addChat(msg, 'tip');
+    speak(msg);
+  }
+
+  // Score-based reactions
+  if (score === 5) {
+    addChat(PERSONALITIES[personality].phrases.lowScore);
+  } else if (score === 15) {
+    addChat(PERSONALITIES[personality].phrases.midScore);
+  } else if (score === 30) {
+    addChat(PERSONALITIES[personality].phrases.highScore);
+  }
+
+  // Session timer
+  const sessionMins = Math.floor((now - sessionStart) / 60000);
+  const sessionSecs = Math.floor(((now - sessionStart) / 1000) % 60);
+  document.getElementById('sessionTime').textContent =
+    `${sessionMins}:${sessionSecs.toString().padStart(2, '0')}`;
+}
+
+function addChat(text, cls = '') {
+  const log = document.getElementById('chatLog');
+  const div = document.createElement('div');
+  div.className = `chat-msg ai ${cls}`;
+  div.innerHTML = `<div class="who">${PERSONALITIES[personality].name}</div>${text}`;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  while (log.children.length > 30) log.removeChild(log.firstChild);
+}
+
+function addSystemMsg(text) {
+  const log = document.getElementById('chatLog');
+  const div = document.createElement('div');
+  div.className = 'chat-msg system';
+  div.textContent = text;
+  log.appendChild(div);
+}
+
+function speak(text) {
+  if (voiceMode === 'off') return;
+  if (!('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = personality === 'hype' ? 1.3 : 1.0;
+  u.pitch = personality === 'hype' ? 1.4 : 0.9;
+  u.volume = voiceMode === 'ai' ? 0.8 : 0.4;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+// ============================================================
+// GAME OVER / START / STOP
+// ============================================================
+function startGame() {
+  if (isPlaying) return;
+  isPlaying = true;
+  score = 0;
+  startTime = Date.now();
+  lastTipTime = Date.now();
+  lastMilestone = 0;
+  document.getElementById('recDot').style.display = 'block';
+  document.getElementById('gameBtn').textContent = '⏸ Stop';
+  document.getElementById('gameBtn').classList.add('live');
+
+  if (currentGame === 'runner') gameState = initRunner();
+  else if (currentGame === 'shooter') gameState = initShooter();
+  else if (currentGame === 'snake') gameState = initSnake();
+
+  const msg = PERSONALITIES[personality].phrases.start;
+  addChat(msg);
+  speak(msg);
+  addSystemMsg(`${currentGame.toUpperCase()} started · ${PERSONALITIES[personality].name} watching`);
+
+  gameLoop();
+}
+
+function stopGame() {
+  isPlaying = false;
+  cancelAnimationFrame(gameLoopId);
+  document.getElementById('recDot').style.display = 'none';
+  document.getElementById('gameBtn').textContent = '▶ Start';
+  document.getElementById('gameBtn').classList.remove('live');
+  speechSynthesis.cancel();
+}
+
+function gameOver() {
+  stopGame();
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('aicoach_best', bestScore);
+    document.getElementById('bestVal').textContent = bestScore;
+    addSystemMsg(`🏆 NEW BEST: ${bestScore}!`);
+  } else {
+    addSystemMsg(`Game Over · Score: ${score} · Best: ${bestScore}`);
+  }
+  const msg = PERSONALITIES[personality].phrases.gameOver;
+  addChat(msg);
+  speak(msg);
+}
+
+// ============================================================
+// CONTROLS
+// ============================================================
+document.getElementById('gameBtn').addEventListener('click', () => {
+  if (isPlaying) stopGame();
+  else startGame();
+});
+
+document.querySelectorAll('#personalityToggle button').forEach(b => {
+  b.addEventListener('click', () => {
+    personality = b.dataset.p;
+    document.querySelectorAll('#personalityToggle button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    const p = PERSONALITIES[personality];
+    document.getElementById('avatarName').textContent = p.name;
+    document.getElementById('avatarTagline').textContent = p.tagline;
+    document.getElementById('avatarImg').textContent = p.avatar;
+    document.getElementById('avatarCard').style.background = p.color;
+    addSystemMsg(`Switched to ${p.name} (${p.tagline})`);
+    speak(p.phrases.start);
+  });
+});
+
+document.querySelectorAll('#gameTabs button').forEach(b => {
+  b.addEventListener('click', () => {
+    if (isPlaying) stopGame();
+    currentGame = b.dataset.game;
+    document.querySelectorAll('#gameTabs button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    score = 0;
+    addSystemMsg(`Game: ${currentGame.toUpperCase()}`);
+  });
+});
+
+document.getElementById('voiceBtn').addEventListener('click', () => {
+  const modes = ['off', 'ai', 'all'];
+  const idx = modes.indexOf(voiceMode);
+  voiceMode = modes[(idx + 1) % modes.length];
+  const labels = { off: '🔇 Silent', ai: '🗣 AI Coach', all: '🎤 Everything' };
+  document.getElementById('voiceBtn').textContent = '🔊 Voice ' + (voiceMode === 'off' ? 'Off' : voiceMode === 'ai' ? 'AI' : 'All');
+  addSystemMsg(`Voice mode: ${labels[voiceMode]}`);
+});
+
+document.querySelectorAll('.voice-toggle button').forEach(b => {
+  b.addEventListener('click', () => {
+    voiceMode = b.dataset.voice;
+    document.querySelectorAll('.voice-toggle button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+  });
+});
+
+// Initial canvas
+setTimeout(() => {
+  ctx.fillStyle = '#0a0a14';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#7b2ff7';
+  ctx.font = 'bold 32px -apple-system';
+  ctx.textAlign = 'center';
+  ctx.fillText('🎮 AI Coach · Click Start', canvas.width/2/window.devicePixelRatio, canvas.height/2/window.devicePixelRatio);
+  ctx.font = '16px -apple-system';
+  ctx.fillStyle = '#888';
+  ctx.fillText('Your AI companion reacts to every move in real time', canvas.width/2/window.devicePixelRatio, canvas.height/2/window.devicePixelRatio + 40);
+}, 100);
+</script>
+
+</body>
+</html>
