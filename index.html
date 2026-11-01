@@ -133,6 +133,7 @@
     overflow: hidden;
     border: 1px solid rgba(255,255,255,0.05);
   }
+  #gameCanvas { touch-action: none; }
   canvas { display: block; width: 100%; height: 100%; }
   .hud {
     position: absolute;
@@ -394,7 +395,7 @@ const PERSONALITIES = {
       highScore: "Sharp play. You're reading the board correctly now.",
       gameOver: "Good session. Note what worked — replicate the pattern.",
       milestone: "Nice milestone. Now push for consistency, not just a single peak.",
-      tip: (ctx) => coachingTips(ctx),
+      tip: () => coachingTips[Math.floor(Math.random() * coachingTips.length)],
     },
   },
   hype: {
@@ -409,7 +410,7 @@ const PERSONALITIES = {
       highScore: "YOU'RE ON FIRE! This is ELITE gameplay!",
       gameOver: "WOOOO! That was INSANE! We're coming back for that record!",
       milestone: "MILESTONE!! Tell your friends! Screenshot this NOW!",
-      tip: (ctx) => hypeTips(ctx),
+      tip: () => hypeTips[Math.floor(Math.random() * hypeTips.length)],
     }
   }
 };
@@ -443,12 +444,17 @@ let personality = 'coach';
 let voiceMode = 'off'; // off | ai | all
 let isPlaying = false;
 let score = 0;
-let bestScore = +(localStorage.getItem('aicoach_best') || 0);
+let bestScore = 0;
+try {
+  const saved = Number(localStorage.getItem('aicoach_best'));
+  if (Number.isFinite(saved) && saved >= 0) bestScore = saved;
+} catch {}
 let startTime = 0;
 let tipsCount = 0;
 let hypeCount = 0;
 let lastTipTime = 0;
 let lastMilestone = 0;
+let lastReactionScore = null;
 let sessionStart = Date.now();
 let currentGame = 'runner';
 let gameLoopId = null;
@@ -463,12 +469,11 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 function resizeCanvas() {
-  const r = canvas.parentElement.getBoundingClientRect();
-  canvas.width = r.width * window.devicePixelRatio;
-  canvas.height = r.width * (10/16) * window.devicePixelRatio;
-  canvas.style.width = r.width + 'px';
-  canvas.style.height = (r.width * 10/16) + 'px';
-  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  canvas.width = 800;
+  canvas.height = 500;
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 window.addEventListener('resize', resizeCanvas);
 setTimeout(resizeCanvas, 50);
@@ -571,10 +576,10 @@ function drawRunner(s) {
   }
 }
 
-canvas.addEventListener('click', () => {
+canvas.addEventListener('click', e => {
   if (!isPlaying) return;
   if (currentGame === 'runner' && gameState?.player?.onGround) {
-    gameState.player.vy = gameState.player.jumpForce;
+    gameState.player.vy = gameState.jumpForce;
     gameState.player.onGround = false;
     // Particles
     for (let i = 0; i < 6; i++) {
@@ -588,6 +593,8 @@ canvas.addEventListener('click', () => {
     }
   } else if (currentGame === 'shooter') {
     // Shoot
+    const r = canvas.getBoundingClientRect();
+    gameState.mouseY = (e.clientY - r.top) * (canvas.height / r.height);
     gameState.bullets.push({ x: 100, y: gameState.mouseY, vx: 12 });
   }
 });
@@ -618,7 +625,10 @@ function updateShooter(s) {
   }
   for (let i = s.bullets.length - 1; i >= 0; i--) {
     s.bullets[i].x += s.bullets[i].vx;
-    if (s.bullets[i].x > canvas.width) s.bullets.splice(i, 1);
+    if (s.bullets[i].x > canvas.width) {
+      s.bullets.splice(i, 1);
+      continue;
+    }
     // Hit detection
     for (const t of s.targets) {
       if (!t.alive) continue;
@@ -667,7 +677,7 @@ function drawShooter(s) {
 canvas.addEventListener('mousemove', (e) => {
   const r = canvas.getBoundingClientRect();
   if (currentGame === 'shooter' && gameState) {
-    gameState.mouseY = (e.clientY - r.top) * (canvas.height / r.height) / window.devicePixelRatio;
+    gameState.mouseY = (e.clientY - r.top) * (canvas.height / r.height);
   }
 });
 
@@ -694,14 +704,26 @@ function updateSnake(s) {
   s.frame = 0;
   s.dir = s.nextDir;
   const head = { x: s.snake[0].x + s.dir.x, y: s.snake[0].y + s.dir.y };
-  if (head.x < 0 || head.x >= s.cols || head.y < 0 || head.y >= s.rows || s.snake.some(p => p.x === head.x && p.y === head.y)) {
+  const eating = head.x === s.food.x && head.y === s.food.y;
+  const body = eating ? s.snake : s.snake.slice(0, -1);
+  if (head.x < 0 || head.x >= s.cols || head.y < 0 || head.y >= s.rows || body.some(p => p.x === head.x && p.y === head.y)) {
     gameOver();
     return;
   }
   s.snake.unshift(head);
-  if (head.x === s.food.x && head.y === s.food.y) {
+  if (eating) {
     score++;
-    s.food = { x: Math.floor(Math.random()*s.cols), y: Math.floor(Math.random()*s.rows) };
+    const free = [];
+    for (let y = 0; y < s.rows; y++) {
+      for (let x = 0; x < s.cols; x++) {
+        if (!s.snake.some(p => p.x === x && p.y === y)) free.push({ x, y });
+      }
+    }
+    if (!free.length) {
+      gameOver();
+      return;
+    }
+    s.food = free[Math.floor(Math.random() * free.length)];
   } else {
     s.snake.pop();
   }
@@ -735,8 +757,30 @@ function drawSnake(s) {
   });
 }
 
+let swipeStart = null;
+canvas.addEventListener('pointerdown', e => {
+  if (!isPlaying || currentGame !== 'snake') return;
+  swipeStart = { x: e.clientX, y: e.clientY };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointerup', e => {
+  if (!swipeStart) return;
+  const dx = e.clientX - swipeStart.x;
+  const dy = e.clientY - swipeStart.y;
+  swipeStart = null;
+  if (!isPlaying || currentGame !== 'snake') return;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 12) return;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    if (gameState.dir.x === 0) gameState.nextDir = { x: Math.sign(dx), y: 0 };
+  } else if (gameState.dir.y === 0) {
+    gameState.nextDir = { x: 0, y: Math.sign(dy) };
+  }
+});
+canvas.addEventListener('pointercancel', () => { swipeStart = null; });
+
 window.addEventListener('keydown', (e) => {
   if (!isPlaying || currentGame !== 'snake' || !gameState) return;
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
   const k = e.key;
   if ((k === 'ArrowUp' || k === 'w') && gameState.dir.y === 0) gameState.nextDir = {x: 0, y: -1};
   if ((k === 'ArrowDown' || k === 's') && gameState.dir.y === 0) gameState.nextDir = {x: 0, y: 1};
@@ -792,12 +836,10 @@ function maybeAIReact() {
   }
 
   // Score-based reactions
-  if (score === 5) {
-    addChat(PERSONALITIES[personality].phrases.lowScore);
-  } else if (score === 15) {
-    addChat(PERSONALITIES[personality].phrases.midScore);
-  } else if (score === 30) {
-    addChat(PERSONALITIES[personality].phrases.highScore);
+  const reaction = { 5: 'lowScore', 15: 'midScore', 30: 'highScore' }[score];
+  if (reaction && score !== lastReactionScore) {
+    lastReactionScore = score;
+    addChat(PERSONALITIES[personality].phrases[reaction]);
   }
 
   // Session timer
@@ -846,6 +888,7 @@ function startGame() {
   startTime = Date.now();
   lastTipTime = Date.now();
   lastMilestone = 0;
+  lastReactionScore = null;
   document.getElementById('recDot').style.display = 'block';
   document.getElementById('gameBtn').textContent = '⏸ Stop';
   document.getElementById('gameBtn').classList.add('live');
@@ -868,14 +911,16 @@ function stopGame() {
   document.getElementById('recDot').style.display = 'none';
   document.getElementById('gameBtn').textContent = '▶ Start';
   document.getElementById('gameBtn').classList.remove('live');
-  speechSynthesis.cancel();
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 }
 
 function gameOver() {
   stopGame();
   if (score > bestScore) {
     bestScore = score;
-    localStorage.setItem('aicoach_best', bestScore);
+    try {
+      localStorage.setItem('aicoach_best', String(bestScore));
+    } catch {}
     document.getElementById('bestVal').textContent = bestScore;
     addSystemMsg(`🏆 NEW BEST: ${bestScore}!`);
   } else {
@@ -920,21 +965,25 @@ document.querySelectorAll('#gameTabs button').forEach(b => {
   });
 });
 
+function setVoiceMode(mode) {
+  voiceMode = mode;
+  const labels = { off: 'Off', ai: 'AI', all: 'All' };
+  document.getElementById('voiceBtn').textContent = '🔊 Voice ' + labels[mode];
+  document.querySelectorAll('.voice-toggle button').forEach(b => {
+    b.classList.toggle('active', b.dataset.voice === mode);
+  });
+  if (mode === 'off' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+}
+
 document.getElementById('voiceBtn').addEventListener('click', () => {
   const modes = ['off', 'ai', 'all'];
-  const idx = modes.indexOf(voiceMode);
-  voiceMode = modes[(idx + 1) % modes.length];
+  setVoiceMode(modes[(modes.indexOf(voiceMode) + 1) % modes.length]);
   const labels = { off: '🔇 Silent', ai: '🗣 AI Coach', all: '🎤 Everything' };
-  document.getElementById('voiceBtn').textContent = '🔊 Voice ' + (voiceMode === 'off' ? 'Off' : voiceMode === 'ai' ? 'AI' : 'All');
   addSystemMsg(`Voice mode: ${labels[voiceMode]}`);
 });
 
 document.querySelectorAll('.voice-toggle button').forEach(b => {
-  b.addEventListener('click', () => {
-    voiceMode = b.dataset.voice;
-    document.querySelectorAll('.voice-toggle button').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-  });
+  b.addEventListener('click', () => setVoiceMode(b.dataset.voice));
 });
 
 // Initial canvas
@@ -944,10 +993,10 @@ setTimeout(() => {
   ctx.fillStyle = '#7b2ff7';
   ctx.font = 'bold 32px -apple-system';
   ctx.textAlign = 'center';
-  ctx.fillText('🎮 AI Coach · Click Start', canvas.width/2/window.devicePixelRatio, canvas.height/2/window.devicePixelRatio);
+  ctx.fillText('🎮 AI Coach · Click Start', canvas.width/2, canvas.height/2);
   ctx.font = '16px -apple-system';
   ctx.fillStyle = '#888';
-  ctx.fillText('Your AI companion reacts to every move in real time', canvas.width/2/window.devicePixelRatio, canvas.height/2/window.devicePixelRatio + 40);
+  ctx.fillText('Your AI companion reacts to every move in real time', canvas.width/2, canvas.height/2 + 40);
 }, 100);
 </script>
 
